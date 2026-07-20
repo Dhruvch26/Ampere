@@ -1,4 +1,8 @@
-const BASE = "/api";
+// In dev, Vite proxies "/api" to localhost:8000 (see vite.config.js).
+// In production there's no proxy, so the deployed frontend needs the real
+// backend URL — set VITE_API_BASE at build time (Vercel env var) once the
+// backend is hosted somewhere.
+const BASE = import.meta.env.VITE_API_BASE ? `${import.meta.env.VITE_API_BASE}/api` : "/api";
 
 async function req(path, options) {
   const res = await fetch(`${BASE}${path}`, options);
