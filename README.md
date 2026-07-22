@@ -143,7 +143,7 @@ The 15-vehicle demo fleet is a deliberate demo scope, not a technical ceiling. E
 ## Links
 
 - 🎥 Demo video: *[add link]*
-- 📄 Detailed document: *[add link]*
+- 📄 Detailed document: *https://drive.google.com/file/d/1OGYyRmRo54StzX5VBS56K7IfeypH-bqo/view?usp=sharing*
 
 ## License
 
