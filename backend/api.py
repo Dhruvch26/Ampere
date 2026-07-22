@@ -15,6 +15,7 @@ from models.degradation import get_model
 from models.anomaly import AnomalyDetector
 from agent.tools import ToolContext
 from agent.orchestrator import run_agent
+from engine.carbon import compute_carbon as _fleet_carbon, asset_carbon as _one_carbon
 
 app = FastAPI(title="AMPERE bridge API")
 
@@ -92,4 +93,19 @@ def agent(asset_id: str, fast_forward_cycles: int = 0):
     if asset_id not in fleet_df.asset_id.tolist():
         raise HTTPException(status_code=404, detail=f"unknown asset_id '{asset_id}'")
     ctx = ToolContext(_model, _detector, fleet_df)
-    return run_agent(ctx, asset_id)
+    result = run_agent(ctx, asset_id)
+
+    # Fleet CO2 is a fixed fleet-wide number — compute it directly rather than
+    # rely on the agent's tool-call transcript having called compute_carbon.
+    # Small/local models sometimes finalize before calling every tool (we saw
+    # this in testing), which left this KPI blank on the frontend even though
+    # the number is fully knowable from data we already have.
+    fleet_rows = fleet_df[["route_km", "duty_cycles_per_day"]].to_dict("records")
+    carbon = _fleet_carbon(fleet_rows)
+    asset_row = fleet_df[fleet_df.asset_id == asset_id].iloc[0]
+    asset_co2 = _one_carbon(asset_row["route_km"], asset_row["duty_cycles_per_day"])["co2_saved_kg"]
+    result.setdefault("decision", {})
+    result["decision"]["co2_saved_kg_yr"] = carbon["fleet_co2_saved_kg_yr"]
+    result["decision"]["this_asset_co2_saved_kg_yr"] = asset_co2
+
+    return result

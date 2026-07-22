@@ -46,7 +46,7 @@ class VehicleState:
         next_ts = pd.Timestamp(last["timestamp"]) + pd.Timedelta(minutes=30)
         self.tick_index += 1
 
-        soc = 50 + 45 * np.sin(self.tick_index / 10.0)
+        soc = 50 + 10 * np.sin(self.tick_index / 10.0)
         soc = float(np.clip(soc + rng.normal(0, 2), 5, 100))
         current = rng.uniform(20, 80) if soc >= last["soc"] else -rng.uniform(20, 120)
 
@@ -62,19 +62,25 @@ class VehicleState:
 
         if self.active_fault_type:
             self.ticks_since_fault += 1
-            t = min(self.ticks_since_fault, 30)
+            # Ramp to full severity within a handful of ticks (~20s at the 4s
+            # tick rate) instead of 30 ticks (~2min) — a demo fault injection
+            # needs to visibly show up in the very next poll, not eventually.
+            t = min(self.ticks_since_fault, 5)
             if self.active_fault_type == "THERMAL_EVENT":
-                pack_temp += np.interp(t, [0, 30], [2, 32])
+                pack_temp += np.interp(t, [0, 5], [10, 32])
             elif self.active_fault_type == "CELL_IMBALANCE":
                 weak_cell = self.tick_index % N_CELLS
-                cell_voltages[weak_cell] -= np.interp(t, [0, 30], [0.02, 0.18])
+                cell_voltages[weak_cell] -= np.interp(t, [0, 5], [0.05, 0.18])
             elif self.active_fault_type == "SENSOR_DROPOUT":
                 dropout_cell = (self.tick_index // 3) % N_CELLS
                 cell_voltages[dropout_cell] = 0.0
             elif self.active_fault_type == "OVERVOLTAGE":
-                cell_voltages += np.interp(t, [0, 30], [0.05, 0.5])
+                # Baseline per-cell voltage runs ~3.17-3.7V depending on SOC;
+                # the old +0.5V ceiling could never clear the 4.25V threshold
+                # even in the best case, so the fault never actually fired.
+                cell_voltages += np.interp(t, [0, 5], [0.3, 1.2])
             elif self.active_fault_type == "UNDERVOLTAGE":
-                cell_voltages -= np.interp(t, [0, 30], [0.05, 1.0])
+                cell_voltages -= np.interp(t, [0, 5], [0.15, 1.0])
 
         row = {
             "timestamp": next_ts,

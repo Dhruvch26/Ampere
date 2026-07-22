@@ -593,6 +593,27 @@ tr.clickable:hover {
   text-align: center;
 }
 
+/* ─── inject-fault confirmation toast ─── */
+.inject-toast {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.inject-toast.success {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: var(--healthy);
+}
+
+.inject-toast.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--critical);
+}
+
 /* ─── toolbar ─── */
 .toolbar {
   display: flex;

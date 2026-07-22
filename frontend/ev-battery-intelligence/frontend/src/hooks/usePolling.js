@@ -5,30 +5,32 @@ export function usePolling(fetcher, intervalMs = 4000, deps = []) {
   const [error, setError] = useState(null);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  const cancelledRef = useRef(false);
+
+  async function tick() {
+    try {
+      const result = await fetcherRef.current();
+      if (!cancelledRef.current) {
+        setData(result);
+        setError(null);
+      }
+    } catch (err) {
+      if (!cancelledRef.current) setError(err);
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function tick() {
-      try {
-        const result = await fetcherRef.current();
-        if (!cancelled) {
-          setData(result);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) setError(err);
-      }
-    }
-
+    cancelledRef.current = false;
     tick();
     const id = setInterval(tick, intervalMs);
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  return { data, error };
+  // Lets a caller force an immediate refresh (e.g. right after an action
+  // that changed server state) instead of waiting for the next tick.
+  return { data, error, refetch: tick };
 }

@@ -19,7 +19,7 @@ def main():
     print(f"  SOH model trained. Held-out MAE: {mae:.3f} SOH points")
 
     print("Generating demo fleet telemetry...")
-    histories = generate_fleet_history(n_vehicles=14, n_points=60)
+    histories = generate_fleet_history(n_vehicles=15, n_points=60)
     print(f"  Fleet size: {len(histories)} vehicles")
 
     print("Training anomaly detector on nominal telemetry...")

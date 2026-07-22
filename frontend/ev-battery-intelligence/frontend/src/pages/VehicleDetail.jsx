@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ResponsiveContainer,
   LineChart,
   Line,
+  Area,
   BarChart,
   Bar,
   Cell,
@@ -33,9 +35,13 @@ export default function VehicleDetail() {
   const { id } = useParams();
   const [faultChoice, setFaultChoice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
 
-  const { data: battery, error: batteryError } = usePolling(() => api.battery(id), 4000, [id]);
-  const { data: history, error: historyError } = usePolling(() => api.history(id, 120), 4000, [id]);
+  useEffect(() => () => clearTimeout(toastTimerRef.current), []);
+
+  const { data: battery, error: batteryError, refetch: refetchBattery } = usePolling(() => api.battery(id), 4000, [id]);
+  const { data: history, error: historyError, refetch: refetchHistory } = usePolling(() => api.history(id, 120), 4000, [id]);
   const { data: faultTypes } = usePolling(api.faultTypes, 60000, []);
 
   if (batteryError || historyError) return <ErrorState error={batteryError || historyError} />;
@@ -52,10 +58,27 @@ export default function VehicleDetail() {
     isDropout: v === 0,
   }));
 
+  function showToast(next) {
+    clearTimeout(toastTimerRef.current);
+    setToast(next);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4500);
+  }
+
   async function handleInject() {
     setBusy(true);
     try {
       await api.injectFault(id, faultChoice || null);
+      // Don't wait for the next 4s poll tick — pull the just-changed state
+      // now so the fault, charts, and status badge update immediately.
+      await Promise.all([refetchBattery(), refetchHistory()]);
+      showToast({
+        kind: "success",
+        text: faultChoice
+          ? `${faultChoice.replaceAll("_", " ")} injected on ${id} — watch the charts above.`
+          : `Fault cleared on ${id} — returning to nominal.`,
+      });
+    } catch (err) {
+      showToast({ kind: "error", text: `Could not inject fault: ${err.message}` });
     } finally {
       setBusy(false);
     }
@@ -143,15 +166,27 @@ export default function VehicleDetail() {
         <AnimatedChild>
           <div className="panel">
             <div className="panel-title">SOC / SOH over time</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={chartHistory}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={chartHistory} margin={{ top: 4, right: 12, left: 6, bottom: 26 }}>
+                <defs>
+                  <linearGradient id="socFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f9cf7" stopOpacity={0.32} />
+                    <stop offset="95%" stopColor="#4f9cf7" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="sohFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#23304a" />
-                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#93a3bc" }} minTickGap={30} />
-                <YAxis tick={{ fontSize: 11, fill: "#93a3bc" }} domain={[0, 100]} />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#ffffff" }} minTickGap={30} height={40} label={{ value: "time", position: "bottom", offset: 6, fontSize: 10, fill: "#93a3bc" }} />
+                <YAxis tick={{ fontSize: 11, fill: "#ffffff" }} domain={[0, 100]} width={44} label={{ value: "%", position: "insideTopLeft", offset: 0, fontSize: 10, fill: "#93a3bc" }} />
                 <Tooltip contentStyle={{ background: "rgba(19,28,46,0.9)", border: "1px solid rgba(79,156,247,0.2)", borderRadius: 8, backdropFilter: "blur(12px)" }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="soc" name="SOC %" stroke="#4f9cf7" dot={false} strokeWidth={2} />
-                <Line type="monotone" dataKey="soh" name="SOH %" stroke="#22c55e" dot={false} strokeWidth={2} />
+                <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 12 }} />
+                <Area type="monotone" dataKey="soc" stroke="none" fill="url(#socFill)" legendType="none" isAnimationActive={false} />
+                <Area type="monotone" dataKey="soh" stroke="none" fill="url(#sohFill)" legendType="none" isAnimationActive={false} />
+                <Line type="monotone" dataKey="soc" name="SOC (%)" stroke="#4f9cf7" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="soh" name="SOH (%)" stroke="#22c55e" dot={false} strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -160,15 +195,24 @@ export default function VehicleDetail() {
         <AnimatedChild>
           <div className="panel">
             <div className="panel-title">Pack temperature (°C)</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={chartHistory}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={chartHistory} margin={{ top: 4, right: 12, left: 6, bottom: 26 }}>
+                <defs>
+                  <linearGradient id="tempFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.32} />
+                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#23304a" />
-                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#93a3bc" }} minTickGap={30} />
-                <YAxis tick={{ fontSize: 11, fill: "#93a3bc" }} />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#ffffff" }} minTickGap={30} height={40} label={{ value: "time", position: "bottom", offset: 6, fontSize: 10, fill: "#93a3bc" }} />
+                <YAxis tick={{ fontSize: 11, fill: "#ffffff" }} width={44} label={{ value: "°C", position: "insideTopLeft", offset: 0, fontSize: 10, fill: "#93a3bc" }} />
                 <Tooltip contentStyle={{ background: "rgba(19,28,46,0.9)", border: "1px solid rgba(79,156,247,0.2)", borderRadius: 8 }} />
-                <ReferenceLine y={55} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "overtemp", fontSize: 10, fill: "#f59e0b" }} />
-                <ReferenceLine y={65} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "thermal runaway risk", fontSize: 10, fill: "#ef4444" }} />
-                <Line type="monotone" dataKey="pack_temp" name="Pack temp" stroke="#f97316" dot={false} strokeWidth={2} />
+                <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 12 }} />
+                <Area type="monotone" dataKey="pack_temp" stroke="none" fill="url(#tempFill)" legendType="none" isAnimationActive={false} />
+                <Line type="monotone" dataKey="pack_temp" name="Pack temp (°C)" stroke="#f97316" dot={false} strokeWidth={2} />
+                {/* reference lines painted last so they always sit on the top visual layer, above the data line */}
+                <ReferenceLine y={55} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "overtemp", position: "insideBottomLeft", fontSize: 10, fill: "#f59e0b" }} />
+                <ReferenceLine y={65} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "thermal runaway risk", position: "insideTopRight", fontSize: 10, fill: "#ef4444" }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -177,20 +221,22 @@ export default function VehicleDetail() {
         <AnimatedChild>
           <div className="panel">
             <div className="panel-title">Cell voltages (imbalance / dropout view)</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={cellData}>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={cellData} margin={{ top: 4, right: 12, left: 6, bottom: 26 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#23304a" />
-                <XAxis dataKey="cell" tick={{ fontSize: 11, fill: "#93a3bc" }} />
-                <YAxis domain={[0, 4.5]} tick={{ fontSize: 11, fill: "#93a3bc" }} />
+                <XAxis dataKey="cell" tick={{ fontSize: 11, fill: "#ffffff" }} height={40} label={{ value: "cell", position: "bottom", offset: 6, fontSize: 10, fill: "#93a3bc" }} />
+                <YAxis domain={[0, 4.5]} tick={{ fontSize: 11, fill: "#ffffff" }} width={48} label={{ value: "volts (V)", position: "insideTopLeft", offset: 0, fontSize: 10, fill: "#93a3bc" }} />
                 <Tooltip contentStyle={{ background: "rgba(19,28,46,0.9)", border: "1px solid rgba(79,156,247,0.2)", borderRadius: 8 }} />
-                <ReferenceLine y={NOMINAL_CELL_V} stroke="#4f9cf7" strokeDasharray="3 3" />
-                <ReferenceLine y={OVERVOLTAGE} stroke="#ef4444" strokeDasharray="3 3" />
-                <ReferenceLine y={UNDERVOLTAGE} stroke="#ef4444" strokeDasharray="3 3" />
-                <Bar dataKey="voltage" name="Cell voltage (V)">
+                <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="voltage" name="Cell voltage (V)" fillOpacity={0.78}>
                   {cellData.map((entry, i) => (
-                    <Cell key={i} fill={entry.isDropout ? "#64748b" : entry.voltage > OVERVOLTAGE || entry.voltage < UNDERVOLTAGE ? "#ef4444" : "#4f9cf7"} />
+                    <Cell key={i} fill={entry.isDropout ? "#64748b" : entry.voltage > OVERVOLTAGE || entry.voltage < UNDERVOLTAGE ? "#ef4444" : "#4f9cf7"} fillOpacity={0.78} />
                   ))}
                 </Bar>
+                {/* reference lines painted last so they always sit on the top visual layer, above the bars */}
+                <ReferenceLine y={NOMINAL_CELL_V} stroke="#4f9cf7" strokeDasharray="3 3" label={{ value: "nominal", position: "insideBottomLeft", fontSize: 9, fill: "#4f9cf7" }} />
+                <ReferenceLine y={OVERVOLTAGE} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "overvoltage", position: "insideTopRight", fontSize: 9, fill: "#ef4444" }} />
+                <ReferenceLine y={UNDERVOLTAGE} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "undervoltage", position: "insideBottomRight", fontSize: 9, fill: "#ef4444" }} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -199,14 +245,22 @@ export default function VehicleDetail() {
         <AnimatedChild>
           <div className="panel">
             <div className="panel-title">SOH degradation projection (to {80}% end-of-life)</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={battery.soh_projection}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={battery.soh_projection} margin={{ top: 4, right: 12, left: 6, bottom: 26 }}>
+                <defs>
+                  <linearGradient id="projFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#23304a" />
-                <XAxis dataKey="cycle" tick={{ fontSize: 11, fill: "#93a3bc" }} />
-                <YAxis domain={[60, 100]} tick={{ fontSize: 11, fill: "#93a3bc" }} />
+                <XAxis dataKey="cycle" tick={{ fontSize: 11, fill: "#ffffff" }} tickFormatter={(v) => Math.round(v)} height={40} label={{ value: "cycles", position: "bottom", offset: 6, fontSize: 10, fill: "#93a3bc" }} />
+                <YAxis domain={[60, 100]} tick={{ fontSize: 11, fill: "#ffffff" }} width={44} label={{ value: "%", position: "insideTopLeft", offset: 0, fontSize: 10, fill: "#93a3bc" }} />
                 <Tooltip contentStyle={{ background: "rgba(19,28,46,0.9)", border: "1px solid rgba(79,156,247,0.2)", borderRadius: 8 }} />
-                <ReferenceLine y={80} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "EOL 80%", fontSize: 10, fill: "#f59e0b" }} />
-                <Line type="monotone" dataKey="soh" name="Projected SOH %" stroke="#22c55e" dot={false} strokeWidth={2} />
+                <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 12 }} />
+                <Area type="monotone" dataKey="soh" stroke="none" fill="url(#projFill)" legendType="none" isAnimationActive={false} />
+                <Line type="monotone" dataKey="soh" name="Projected SOH (%)" stroke="#22c55e" dot={false} strokeWidth={2} />
+                <ReferenceLine y={80} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "EOL 80%", position: "insideTopLeft", fontSize: 10, fill: "#f59e0b" }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -224,7 +278,7 @@ export default function VehicleDetail() {
               ))}
             </select>
             <button onClick={handleInject} disabled={busy}>
-              {faultChoice ? "Inject fault" : "Clear fault"}
+              {busy ? (faultChoice ? "Injecting..." : "Clearing...") : (faultChoice ? "Inject fault" : "Clear fault")}
             </button>
             <button className="secondary" onClick={handleExport}>Export battery report (JSON)</button>
           </div>
@@ -232,6 +286,20 @@ export default function VehicleDetail() {
             Injecting a fault simulates a real BMS event on this vehicle's live telemetry stream so you can watch the
             AI fault-detection pipeline and the 3D digital twin react in real-time.
           </p>
+          <AnimatePresence>
+            {toast && (
+              <motion.div
+                key={toast.text}
+                className={`inject-toast ${toast.kind}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25 }}
+              >
+                {toast.kind === "success" ? "✓ " : "⚠ "}{toast.text}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </AnimatedChild>
     </AnimatedPage>

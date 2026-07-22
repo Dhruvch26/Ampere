@@ -84,7 +84,7 @@ def generate_training_population(n_samples=600, seed=7):
     )
 
 
-def _vehicle_profiles(n_vehicles=14, seed=42):
+def _vehicle_profiles(n_vehicles=15, seed=42):
     rng = _rng(seed)
     profiles = []
     fault_slots = rng.choice(n_vehicles, size=min(5, n_vehicles), replace=False)
@@ -112,7 +112,7 @@ def _vehicle_profiles(n_vehicles=14, seed=42):
     return profiles
 
 
-def generate_fleet_history(n_vehicles=14, n_points=60, seed=42):
+def generate_fleet_history(n_vehicles=15, n_points=60, seed=42):
     """Per-vehicle time series telemetry for the live dashboard demo.
 
     Returns dict: vehicle_id -> DataFrame with one row per timestamp, including
@@ -133,8 +133,10 @@ def generate_fleet_history(n_vehicles=14, n_points=60, seed=42):
             cycles_series, profile["avg_dod"], profile["avg_c_rate"], profile["avg_temp"]
         ) + rng.normal(0, 0.3, n_points)
 
-        # SOC follows a repeating charge/discharge duty cycle
-        soc_series = 50 + 45 * np.sin(np.linspace(0, 6 * np.pi, n_points))
+        # SOC follows a repeating charge/discharge duty cycle — kept close to
+        # the 50% midline (small amplitude) rather than a full 5-100% sweep,
+        # since a fleet vehicle's pack rarely swings that wide tick-to-tick.
+        soc_series = 50 + 10 * np.sin(np.linspace(0, 6 * np.pi, n_points))
         soc_series = np.clip(soc_series + rng.normal(0, 2, n_points), 5, 100)
 
         pack_current = np.where(
@@ -163,8 +165,11 @@ def generate_fleet_history(n_vehicles=14, n_points=60, seed=42):
                 dropout_cell = rng.integers(0, N_CELLS)
                 cell_voltage_matrix[fault_start:, dropout_cell] = 0.0
             elif fault_type == "OVERVOLTAGE":
+                # Same fix as simulation.py's live tick: the old ceiling could
+                # never clear OVERVOLTAGE_THRESHOLD (4.25V) from typical
+                # per-cell baselines (~3.17-3.7V), so the fault never tripped.
                 cell_voltage_matrix[fault_start:, :] += np.linspace(
-                    0.05, 0.45, n_points - fault_start
+                    0.3, 1.2, n_points - fault_start
                 ).reshape(-1, 1)
             elif fault_type == "UNDERVOLTAGE":
                 cell_voltage_matrix[fault_start:, :] -= np.linspace(
